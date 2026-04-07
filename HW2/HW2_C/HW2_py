@@ -1,0 +1,12 @@
+import time
+import board
+import pwmio
+
+
+pwm = pwmio.PWMOut(board.GP18, frequency = 50)
+
+while True:
+    for angle in range(0,180,1):
+        time.sleep(1)
+    for angle in range(180,0,-1):
+        time.sleep(1)
