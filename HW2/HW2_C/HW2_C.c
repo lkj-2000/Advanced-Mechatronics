@@ -23,25 +23,32 @@ int main()
     // frequency is 150MHz / div / wrap, we're aiming for 50 Hz
     pwm_set_wrap(slice_num, wrap);
     pwm_set_enabled(slice_num, true);
-    pwm_set_gpio_level(PWMPIN, 0); //sets duty cycle to 50%
+    pwm_set_gpio_level(PWMPIN,0); //sets duty cycle to 50%
 
     adc_init();
     adc_gpio_init(26);
     adc_select_input(0);
 
     while (true) {
-       int i = 10;
-       for (i=10; i<170; i++){
+       int i = 0;
+       for (i=0; i<180; i++){
         set_angle(i);
         sleep_ms(10);
        } 
-       for (i=170; i>10; i--){
+       for (i=180; i>0; i--){
         set_angle(i);
         sleep_ms(10);
-       } 
-    }
+       }
+    //   sleep_ms(6000);
+    //   printf("Enter PWM: ");
+    //   int pwm;
+    //   scanf("%d", &pwm);
+    //   set_angle(pwm);
+    } 
 }
 
+
 void set_angle(int angle){
-    pwm_set_gpio_level(PWMPIN, (int)(0.05+angle/180.0*0.05*60000));
+    float pwm = 1250+(angle/180.0)*(6950-1250); //calculates duty cycle for given angle
+    pwm_set_gpio_level(PWMPIN, pwm);
 }
