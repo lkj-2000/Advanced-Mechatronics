@@ -43,7 +43,7 @@ unsigned char readPin(unsigned char reg){
 void led_flash(){
     setPin(GPIO_ADDR, 0b10000000);  // set bit 0 to 1 (turn pin on)
     sleep_ms(1000);
-    setPin(GPIO_ADDR, 0b00000000);   // set bits to OLAT to turn pins on or off
+    setPin(GPIO_ADDR, 0b00000000);
     sleep_ms(1000);
 }
 
