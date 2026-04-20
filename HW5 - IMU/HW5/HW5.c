@@ -139,6 +139,7 @@ void drawLine(float a_x, float a_y){
     // }
 }
 
+void IMU_shift_draw(){
     uint8_t data[14];
     i2c_read_multi(MPU_ADDR, ACCEL_XOUT_H, data);
     
