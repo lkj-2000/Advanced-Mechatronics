@@ -26,129 +26,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "pico/stdlib.h"
 
-#include "hardware/gpio.h"
-#include "hardware/i2c.h"
 #include "bsp/board_api.h"
 #include "tusb.h"
-#include "math.h"
 
 #include "usb_descriptors.h"
-
-#define I2C_PORT i2c0
-#define I2C_SDA_IMU 8
-#define I2C_SCL_IMU 9
-
-#define MPU_ADDR 0x68
-// config registers
-#define CONFIG 0x1A
-#define GYRO_CONFIG 0x1B
-#define ACCEL_CONFIG 0x1C
-#define PWR_MGMT_1 0x6B
-#define PWR_MGMT_2 0x6C
-// sensor data registers:
-#define ACCEL_XOUT_H 0x3B
-#define ACCEL_XOUT_L 0x3C
-#define ACCEL_YOUT_H 0x3D
-#define ACCEL_YOUT_L 0x3E
-#define WHO_AM_I     0x75
-
-#define TOGGLE_BUTTON 21
-
-bool circle_mode = false;
-bool last_button = true;
-
-// function prototypes
-void MPU_init();
-void gpio_initialization();
-void i2c_write(unsigned char address, unsigned char reg, unsigned char value);
-unsigned char i2c_read(unsigned char address, unsigned char reg);
-void i2c_read_multi(unsigned char address, unsigned char reg, uint8_t *data_store);
-void drawLine(float a_x, float a_y);
-void check_mode_toggle();
-
-
-void check_mode_toggle() {
-    bool current = gpio_get(TOGGLE_BUTTON);
-
-    // detect falling edge (button press)
-    if (last_button == 1 && current == 0) {
-        circle_mode = !circle_mode;
-    }
-
-    last_button = current;
-}
-
-void MPU_init(){
-    i2c_write(MPU_ADDR, PWR_MGMT_1, 0x00);// write 0x00 to PWR_MGMT_1 to turn chip on
-    i2c_write(MPU_ADDR, ACCEL_CONFIG, 0x00); // write to ACCEL_CONFIG to enable accelerometer, sensitivity to +/- 2g
-    i2c_write(MPU_ADDR, GYRO_CONFIG, 0x00); // write to GYRO_CONFIG to enable gyropscope, sensitivity to +/- 2000 dps
-}
-
-void i2c_write(unsigned char address, unsigned char reg, unsigned char value){
-    uint8_t buf[2] = {reg, value};
-    i2c_write_blocking(I2C_PORT, address, buf, 2, false);
-}
-
-unsigned char i2c_read(unsigned char address, unsigned char reg){
-    i2c_write_blocking(I2C_PORT, address, &reg, 1, true);  // true to keep host control of bus
-    uint8_t value;
-    i2c_read_blocking(I2C_PORT, address, &value, 1, false);  // false - finished with bus
-    return value;
-}
-
- void i2c_read_multi(unsigned char address, unsigned char reg, uint8_t *data_store){
-    i2c_write_blocking(I2C_PORT, address, &reg, 1, true);  // true to keep host control of bus
-    i2c_read_blocking(I2C_PORT, address, data_store, 14, false);  // false - finished with bus
-}
-
-
-void gpio_initialization(){
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
-
-    gpio_set_function(I2C_SDA_IMU, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL_IMU, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA_IMU);
-    gpio_pull_up(I2C_SCL_IMU);
-
-    gpio_init(TOGGLE_BUTTON);
-    gpio_set_dir(TOGGLE_BUTTON, GPIO_IN);
-    gpio_pull_up(TOGGLE_BUTTON);
-}
-
-void drawLine(float a_x, float a_y){
-    int x0 = 0;
-    int y0 = 0;
-
-    int x1 = x0 + a_x;
-    int y1 = y0 + a_y;
-
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
-
-    int err = dx - dy;
-
-    while (1) {
-        if (x0 == x1 && y0 == y1) break;
-
-        int e2 = 2 * err;
-
-        if (e2 > -dy) {
-            err -= dy;
-            x0 += sx;
-        }
-
-        if (e2 < dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
@@ -174,9 +56,6 @@ void hid_task(void);
 int main(void)
 {
   board_init();
-  stdio_init_all();
-  gpio_initialization();
-  MPU_init();
 
   // init device stack on configured roothub port
   tud_init(BOARD_TUD_RHPORT);
@@ -187,7 +66,6 @@ int main(void)
 
   while (1)
   {
-    check_mode_toggle();
     tud_task(); // tinyusb device task
     led_blinking_task();
 
@@ -260,42 +138,10 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 
     case REPORT_ID_MOUSE:
     {
-      int8_t deltax = 5;
-      int8_t deltay = 5;
-
-      // circle mode
-      static float angle = 0.0;
-      static int8_t x = 0, y = 0;
-      if (circle_mode){
-        int radius = 10;
-        deltax = (int8_t)(radius * cos(angle));
-        deltay = (int8_t)(radius * sin(angle));
-        angle += 0.1;
-
-      } else {    // IMU controlled
-        
-        uint8_t data[14];
-        i2c_read_multi(MPU_ADDR, ACCEL_XOUT_H, data);
-    
-        // read accelerations and convert to units of g
-        int16_t accel_x = (data[0] << 8) | data[1];
-        int16_t accel_y = (data[2] << 8) | data[3];
-        // float accel_x_g = accel_x * 0.000061;
-        // float accel_y_g = accel_y * 0.000061;
-        
-        if (accel_x < 0){
-          deltax = -5;
-        } else if (accel_x > 0){
-          deltax = 5;
-        } else if (accel_y < 0){
-          deltay = -5;
-        } else{
-          deltay = 5;
-        }
-      }
+      int8_t const delta = 5;
 
       // no button, right + down, no scroll, no pan
-      tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, deltax, deltay, 0, 0);
+      tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, delta, delta, 0, 0);
     }
     break;
 
@@ -356,8 +202,6 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 // tud_hid_report_complete_cb() is used to send the next report after previous one is complete
 void hid_task(void)
 {
-  board_led_write(circle_mode);  // ON = circle mode, OFF = IMU mode
-
   // Poll every 10ms
   const uint32_t interval_ms = 10;
   static uint32_t start_ms = 0;
