@@ -54,7 +54,8 @@
 #define ACCEL_YOUT_L 0x3E
 #define WHO_AM_I     0x75
 
-#define TOGGLE_BUTTON 21
+#define TOGGLE_BUTTON 19
+#define LED_PIN 16
 
 bool circle_mode = false;
 bool last_button = true;
@@ -70,16 +71,21 @@ void check_mode_toggle();
 
 
 void check_mode_toggle() {
-    bool current = gpio_get(TOGGLE_BUTTON);
+    static uint32_t last_press_time = 0;
 
-    // detect falling edge (button press)
+    bool current = gpio_get(TOGGLE_BUTTON);
+    uint32_t now = board_millis();
+
+    // detect falling edge + debounce
     if (last_button == 1 && current == 0) {
-        circle_mode = !circle_mode;
+        if (now - last_press_time > 200) {  // 200 ms debounce
+            circle_mode = !circle_mode;
+            last_press_time = now;
+        }
     }
 
     last_button = current;
 }
-
 void MPU_init(){
     i2c_write(MPU_ADDR, PWR_MGMT_1, 0x00);// write 0x00 to PWR_MGMT_1 to turn chip on
     i2c_write(MPU_ADDR, ACCEL_CONFIG, 0x00); // write to ACCEL_CONFIG to enable accelerometer, sensitivity to +/- 2g
@@ -116,6 +122,11 @@ void gpio_initialization(){
     gpio_init(TOGGLE_BUTTON);
     gpio_set_dir(TOGGLE_BUTTON, GPIO_IN);
     gpio_pull_up(TOGGLE_BUTTON);
+
+    // LED (GP16)
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 0);
 }
 
 void drawLine(float a_x, float a_y){
@@ -174,8 +185,8 @@ void hid_task(void);
 int main(void)
 {
   board_init();
-  stdio_init_all();
   gpio_initialization();
+  stdio_init_all();
   MPU_init();
 
   // init device stack on configured roothub port
@@ -260,17 +271,17 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 
     case REPORT_ID_MOUSE:
     {
-      int8_t deltax = 5;
-      int8_t deltay = 5;
+      int8_t deltax = 0;
+      int8_t deltay = 0;
 
       // circle mode
       static float angle = 0.0;
       static int8_t x = 0, y = 0;
       if (circle_mode){
-        int radius = 10;
+        int radius = 7;
         deltax = (int8_t)(radius * cos(angle));
         deltay = (int8_t)(radius * sin(angle));
-        angle += 0.1;
+        angle += 0.05;
 
       } else {    // IMU controlled
         
@@ -283,14 +294,32 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
         // float accel_x_g = accel_x * 0.000061;
         // float accel_y_g = accel_y * 0.000061;
         
-        if (accel_x < 0){
-          deltax = -5;
-        } else if (accel_x > 0){
-          deltax = 5;
-        } else if (accel_y < 0){
-          deltay = -5;
-        } else{
-          deltay = 5;
+        if (accel_x > 12000) {
+            deltax = 8;        // fast
+        } else if (accel_x > 6000) {
+            deltax = 4;        // medium
+        } else if (accel_x > 2000) {
+            deltax = 2;        // slow
+        } else if (accel_x < -12000) {
+            deltax = -8;
+        } else if (accel_x < -6000) {
+            deltax = -4;
+        } else if (accel_x < -2000) {
+            deltax = -2;
+        }
+        
+        if (accel_y > 12000) {
+            deltay = 8;
+        } else if (accel_y > 6000) {
+            deltay = 4;
+        } else if (accel_y > 2000) {
+            deltay = 2;
+        } else if (accel_y < -12000) {
+            deltay = -8;
+        } else if (accel_y < -6000) {
+            deltay = -4;
+        } else if (accel_y < -2000) {
+            deltay = -2;
         }
       }
 
@@ -357,7 +386,8 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 void hid_task(void)
 {
   board_led_write(circle_mode);  // ON = circle mode, OFF = IMU mode
-
+  gpio_put(LED_PIN, circle_mode); // external LED (GP16)
+  
   // Poll every 10ms
   const uint32_t interval_ms = 10;
   static uint32_t start_ms = 0;
