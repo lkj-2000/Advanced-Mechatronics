@@ -39,11 +39,11 @@ int main()
         float sin_voltage = (sinf(2*PI*t) + 1) * (3.3/2);
         writeDAC(0, sin_voltage); // channel A
 
-        static bool up;
+        static bool up = true;
         static float tri_volt = 0;
 
         if (up){ // triangle slope up
-            tri_volt += 3.3*dt; 
+            tri_volt += 3.3*dt;
             if (tri_volt >= 3.3){
                 tri_volt = 3.3;
                 up = false;
@@ -59,10 +59,10 @@ int main()
         writeDAC(1, tri_volt); // channel B
 
         // float voltage = 2.0f;
-        // writeDAC(1, voltage);
+        // writeDAC(0, voltage);
 
         sleep_ms(10);
-
+        printf("voltage: %f\n",tri_volt);
         t += dt; // adjusts how choppy output is
     }
 }
